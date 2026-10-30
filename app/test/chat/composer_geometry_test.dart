@@ -1,9 +1,9 @@
 // The composer's round keys sit in its capsule like a pill's end caps: on one
 // line, the gap above, below and beside each key is the same, and the + on
 // the left mirrors the send key on the right. Taller (multi-line) input keeps
-// the keys at the bottom with the same bottom and side gaps. With voice, the
-// mic takes the send key's place on an empty draft, and while dictating the
-// ✕ takes the +'s: all four are the same 40 circle in the same two seats.
+// the keys at the bottom with the same bottom and side gaps. The dedicated
+// mic sits beside send; while dictating, ✕ takes the +'s place and the
+// dictation stop takes the mic's. All action keys are 40dp circles.
 
 import 'package:dsh_app/ui/chat/composer.dart';
 import 'package:dsh_app/ui/chat/mention/mention_text_controller.dart';
@@ -154,13 +154,15 @@ void main() {
   });
 
   for (final scale in [1.0, 1.3]) {
-    testWidgets('the mic mirrors the + on an empty draft (text ×$scale)', (tester) async {
+    testWidgets('the mic sits beside the end-cap send key (text ×$scale)', (tester) async {
       final input = MentionTextController();
       await _pump(tester, input: input, voice: _voice(input), textScale: scale);
       await tester.pump();
       final mic = _round(tester, AppIcons.voice);
       final plus = _plus(tester);
-      _expectEndCaps(tester, plus, mic);
+      _expectEndCaps(tester, plus, _send(tester));
+      expect(mic.size, const Size(40, 40));
+      expect(_send(tester).left - mic.right, 8);
       expect(mic.top - _capsule(tester).top, plus.top - _capsule(tester).top);
     });
   }
@@ -173,6 +175,8 @@ void main() {
     await tester.pump();
     final empty = _capsule(tester);
     final plus = _plus(tester);
+    final mic = _round(tester, AppIcons.voice);
+    final send = _send(tester);
     await voice.start();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
@@ -181,7 +185,9 @@ void main() {
     final cancel = _cancel(tester);
     final stop = _round(tester, AppIcons.stopGenerating);
     expect(cancel, plus);
-    _expectEndCaps(tester, cancel, stop);
+    expect(stop, mic);
+    expect(_send(tester), send);
+    _expectEndCaps(tester, cancel, send);
     expect(_capsule(tester), empty);
 
     final bars = tester.getRect(find.byType(VoiceWaveform));

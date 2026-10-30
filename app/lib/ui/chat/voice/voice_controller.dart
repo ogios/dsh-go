@@ -199,6 +199,14 @@ class VoiceInputController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> start() async {
     if (active || _disposed || !_foreground) return;
+    // Capture the insertion point before keyboard dismissal or permission UI.
+    final value = input.value;
+    final selection = value.selection;
+    final validSelection = selection.isValid && selection.end <= value.text.length;
+    _base = value;
+    _anchorStart = validSelection ? selection.start : value.text.length;
+    _anchorEnd = validSelection ? selection.end : value.text.length;
+    _heard = '';
     final operation = ++_operation;
     _fallbackTried = false;
     _switching = false;
@@ -257,11 +265,6 @@ class VoiceInputController extends ChangeNotifier with WidgetsBindingObserver {
       _say(VoiceMessage(appL10n.voiceChooseSystem, change: true));
       return;
     }
-    final value = input.value;
-    _base = value;
-    _anchorStart = value.selection.isValid ? value.selection.start : value.text.length;
-    _anchorEnd = value.selection.isValid ? value.selection.end : value.text.length;
-    _heard = '';
     if (system && _runMode == VoiceMode.auto && _caps.recorder && _modelReady()) {
       // The voice model first: phone services on Chinese ROMs report
       // themselves available and then fail. The engine has the last word; a

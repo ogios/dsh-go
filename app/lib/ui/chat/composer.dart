@@ -26,9 +26,9 @@ const _lineHeight = 1.45;
 /// 圆角 28 = 键半径 20 + 8,圆键与胶囊两端同心;文字在 40 高里居中。
 /// 多行时键贴底,底边和侧边仍是 8。
 ///
-/// 语音([voice]):草稿为空时发送键是麦克风(和 ＋ 键同样的淡底圆);
-/// 听写时 ＋ 换成 ✕(取消)、发送键换成主色的停止键,中间文字处显示
-/// 识别结果,停止键左边是音量条。四颗键始终同一位置、同一尺寸。
+/// 语音([voice]):独立麦克风在发送键左边,和 ＋ 键同样的淡底圆。
+/// 听写时 ＋ 换成 ✕(取消)、麦克风换成主色的停止键,中间文字处显示
+/// 识别结果,麦克风左边是音量条。发送 / 停止生成键独立保留。
 class Composer extends StatefulWidget {
   const Composer({
     super.key,
@@ -252,9 +252,9 @@ class _ComposerState extends State<Composer> {
   void _startVoice() {
     final voice = widget.voice;
     if (voice == null) return;
+    voice.start();
     // Dictation shows the text in the field; the keyboard only covers it.
     (widget.focusNode ?? FocusManager.instance.primaryFocus)?.unfocus();
-    voice.start();
   }
 
   @override
@@ -284,9 +284,13 @@ class _ComposerState extends State<Composer> {
             final phase = voice?.phase ?? VoicePhase.idle;
             final dictating = phase == VoicePhase.listening || phase == VoicePhase.transcribing;
             final empty = value.text.trim().isEmpty && !widget.hasAttachments;
-            final showStop = widget.running && empty && !dictating;
-            final showMic = !dictating && !showStop && empty && !widget.busy && (voice?.available ?? false);
-            final enabled = !widget.busy && widget.connected && widget.sessionReady && (showStop || !empty);
+            final showStop = widget.running && empty;
+            final showMic = (voice?.available ?? false) || (voice?.active ?? false);
+            final enabled =
+                !widget.busy &&
+                widget.connected &&
+                widget.sessionReady &&
+                (showStop || (!empty && !(voice?.active ?? false)));
             final waiting = widget.waiting || widget.waitHint != null;
             final hint = switch (phase) {
               VoicePhase.listening => l10n.chatListeningEllipsis,
@@ -308,21 +312,8 @@ class _ComposerState extends State<Composer> {
                 ? VoiceWaveform(level: voice!.level, active: phase == VoicePhase.listening)
                 : widget.accessory;
 
-            final _KeyMode mode;
-            if (dictating) {
-              mode = _KeyMode.stopVoice;
-            } else if (showStop) {
-              mode = _KeyMode.stopRun;
-            } else if (showMic) {
-              mode = _KeyMode.mic;
-            } else {
-              mode = _KeyMode.send;
-            }
-            final keyBusy =
-                widget.busy ||
-                (showStop && widget.stopping) ||
-                phase == VoicePhase.transcribing ||
-                phase == VoicePhase.starting;
+            final mode = showStop ? _KeyMode.stopRun : _KeyMode.send;
+            final keyBusy = widget.busy || (showStop && widget.stopping);
 
             final row = Row(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -386,28 +377,22 @@ class _ComposerState extends State<Composer> {
                 ),
                 const SizedBox(width: 8),
                 if (accessory != null) ...[accessory, const SizedBox(width: 2)],
+                if (showMic) ...[
+                  _SendButton(
+                    mode: dictating ? _KeyMode.stopVoice : _KeyMode.mic,
+                    busy: phase == VoicePhase.starting || phase == VoicePhase.transcribing,
+                    enabled: phase == VoicePhase.idle || phase == VoicePhase.listening,
+                    onTap: dictating ? voice!.stop : _startVoice,
+                  ),
+                  const SizedBox(width: _keyGap),
+                ],
                 _SendButton(
                   mode: mode,
                   busy: keyBusy,
                   quiet: showStop && waiting && !widget.stopping,
-                  enabled: switch (mode) {
-                    _KeyMode.mic => true,
-                    _KeyMode.stopVoice => phase == VoicePhase.listening,
-                    _ => enabled,
-                  },
+                  enabled: enabled,
                   onLongPress: mode != _KeyMode.send || !enabled ? null : widget.onSendOptions,
-                  onTap: () {
-                    switch (mode) {
-                      case _KeyMode.stopRun:
-                        _stop();
-                      case _KeyMode.send:
-                        _send();
-                      case _KeyMode.mic:
-                        _startVoice();
-                      case _KeyMode.stopVoice:
-                        voice?.stop();
-                    }
-                  },
+                  onTap: showStop ? _stop : _send,
                 ),
               ],
             );
@@ -439,7 +424,7 @@ class _ComposerState extends State<Composer> {
   }
 }
 
-/// What the right-hand key does.
+/// What a composer action key does.
 enum _KeyMode {
   /// ↑ send.
   send,
@@ -447,7 +432,7 @@ enum _KeyMode {
   /// ■ stop the running turn.
   stopRun,
 
-  /// 🎙 start dictating (draft empty).
+  /// 🎙 start dictating at the current selection.
   mic,
 
   /// ■ stop dictating and keep the text.

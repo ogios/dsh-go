@@ -1,0 +1,106 @@
+name: Android APK
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      DSH_BETA_TOKEN_FILE: ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.7'
+          cache: true
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare Flutter
+        run: |
+          flutter config --no-analytics --android-sdk "$ANDROID_HOME" --jdk-dir "$JAVA_HOME"
+          flutter precache --android
+          python3 app/tool/l10n_merge.py --no-gen
+          cd app
+          flutter pub get
+          flutter gen-l10n
+
+      - name: Build bundled runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zstd file
+          bash runtime/build-runtime.sh arm64-v8a
+
+      - name: Configure release signing when secrets are available
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          names = (
+              'ANDROID_KEYSTORE_BASE64',
+              'ANDROID_KEYSTORE_PASSWORD',
+              'ANDROID_KEY_ALIAS',
+              'ANDROID_KEY_PASSWORD',
+          )
+          if not all(os.environ.get(name) for name in names):
+              print('Signing secrets incomplete or unavailable; using debug signing.')
+              raise SystemExit(0)
+
+          os.umask(0o077)
+          keystore = Path(os.environ['RUNNER_TEMP']) / 'android-release.jks'
+          keystore.write_bytes(base64.b64decode(os.environ['ANDROID_KEYSTORE_BASE64']))
+
+          def escape(value):
+              encoded = value.encode('utf-16-be')
+              return ''.join(
+                  f'\\u{int.from_bytes(encoded[i:i + 2], "big"):04x}'
+                  for i in range(0, len(encoded), 2)
+              )
+
+          properties = {
+              'storeFile': str(keystore),
+              'storePassword': os.environ['ANDROID_KEYSTORE_PASSWORD'],
+              'keyAlias': os.environ['ANDROID_KEY_ALIAS'],
+              'keyPassword': os.environ['ANDROID_KEY_PASSWORD'],
+          }
+          Path('app/android/key.properties').write_text(
+              ''.join(f'{key}={escape(value)}\n' for key, value in properties.items()),
+              encoding='ascii',
+          )
+          PY
+
+      - name: Build release APK
+        run: bash tooling/build-apk.sh --release -f arm64 --keep-daemon
+
+      - name: Remove signing files
+        if: always()
+        run: rm -f app/android/key.properties "$RUNNER_TEMP/android-release.jks"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-arm64-release
+          path: app/build/app/outputs/flutter-apk/app-arm64-release.apk
+          if-no-files-found: error
