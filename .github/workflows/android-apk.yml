@@ -28,7 +28,24 @@ jobs:
           flutter-version: '3.47.7'
           cache: true
 
-      - uses: android-actions/setup-android@v3
+      - name: Prepare Android SDK
+        shell: bash
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:?Android SDK is not configured}}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          printf 'ANDROID_HOME=%s\nANDROID_SDK_ROOT=%s\n' "$ANDROID_HOME" "$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          printf '%s\n' "$ANDROID_HOME/cmdline-tools/latest/bin" "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$sdkmanager"
+          # yes may receive SIGPIPE when sdkmanager finishes reading licenses.
+          (yes || true) | "$sdkmanager" --sdk_root="$ANDROID_HOME" --licenses
+          # Flutter 3.47.7 supplies compileSdk/NDK; AGP 9.1.0 uses Build Tools 36.0.0.
+          "$sdkmanager" --sdk_root="$ANDROID_HOME" \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;28.2.13676358"
 
       - uses: gradle/actions/setup-gradle@v4
 
@@ -44,7 +61,7 @@ jobs:
       - name: Build bundled runtime
         run: |
           sudo apt-get update
-          sudo apt-get install -y zstd file
+          sudo apt-get install -y ca-certificates curl file gpgv openssl python3 xz-utils zstd
           bash runtime/build-runtime.sh arm64-v8a
 
       - name: Configure release signing when secrets are available
