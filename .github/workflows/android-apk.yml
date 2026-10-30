@@ -14,6 +14,12 @@ jobs:
     timeout-minutes: 90
     env:
       DSH_BETA_TOKEN_FILE: ''
+      UBUNTU_MIRROR: https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release
+      UBUNTU_ARCHIVE_AMD64: http://archive.ubuntu.com/ubuntu
+      UBUNTU_ARCHIVE_ARM64: http://ports.ubuntu.com/ubuntu-ports
+      NODE_MIRROR: https://nodejs.org/dist
+      NPM_REGISTRY: https://registry.npmjs.org
+      PBS_MIRROR: https://github.com/astral-sh/python-build-standalone/releases/download
     steps:
       - uses: actions/checkout@v4
 
@@ -45,9 +51,15 @@ jobs:
             "platform-tools" \
             "platforms;android-36" \
             "build-tools;36.0.0" \
-            "ndk;28.2.13676358"
+            "ndk;28.2.13676358" \
+            "cmake;3.22.1"
 
       - uses: gradle/actions/setup-gradle@v4
+
+      - name: Use upstream Gradle distribution
+        run: |
+          sed -i 's|https\\://mirrors.cloud.tencent.com/gradle/|https\\://services.gradle.org/distributions/|' \
+            app/android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Prepare Flutter
         run: |
@@ -61,7 +73,7 @@ jobs:
       - name: Build bundled runtime
         run: |
           sudo apt-get update
-          sudo apt-get install -y ca-certificates curl file gpgv openssl python3 xz-utils zstd
+          sudo apt-get install -y ca-certificates coreutils curl file findutils gpgv grep openssl procps python3 sed tar unzip xz-utils zstd
           bash runtime/build-runtime.sh arm64-v8a
 
       - name: Configure release signing when secrets are available
