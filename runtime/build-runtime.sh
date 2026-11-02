@@ -36,7 +36,7 @@ LOCKS="$HERE/locks"
 PY=(python3 -I "$HERE/lib/rtbuild.py")
 
 # ---- pinned inputs (override via environment; pinned hashes then must be updated too) ----
-RUNTIME_REVISION="${RUNTIME_REVISION:-r14}"  # backend stack R7 (bundle-scoped plugin-config) + 076 callback fix + four rc.4 fixes; DSH as r12
+RUNTIME_REVISION="${RUNTIME_REVISION:-r15}"  # r14 + per-family DNS under PRoot, input recovery, session deletion and upload resolver fixes, title and boot cache work; DSH as r12
 DSH_VERSION="${DSH_VERSION:-0.2.1-rc.4}"
 NODE_VERSION="${NODE_VERSION:-24.22.1}"
 # pnpm runs DSH's plugin installs (pluginManager / `dsh plugin`); the version the DSH repo pins.
@@ -44,7 +44,7 @@ PNPM_VERSION="${PNPM_VERSION:-11.28.5}"
 # dist.integrity of pnpm-$PNPM_VERSION.tgz, identical on registry.npmjs.org and npmmirror
 PNPM_INTEGRITY="${PNPM_INTEGRITY:-sha512-SEVj0wtMKtJ8tIqpT/KzAtvOvI/2vyiBbCWJiG4UbOf3bzVPO8GkOOb16XaMMCqgpvet2CMpA81M+BQmy8FNng==}"
 UBUNTU_VERSION="${UBUNTU_VERSION:-24.04.5}"
-PROOT_VERSION="5.1.107.101"
+PROOT_VERSION="5.1.107.102"
 TALLOC_VERSION="2.5.0"
 SHMEM_VERSION="0.7"
 UBUNTU_EXTRA="${UBUNTU_EXTRA:-tzdata ca-certificates git}"   # extra noble debs (+ dependency closure)
@@ -73,8 +73,8 @@ declare -A PIN=(
   [ubuntu-base-24.04.5-base-amd64.tar.gz]=e77b6f10c2590cef872b33ee9f635a0e3fd1f57fb074c0e52b5c7f56147a0c86
   [node-v24.22.1-linux-arm64.tar.xz]=dbabf7a1cbf947e6059ffad2c27b80041db97dea1e553b62afdee7f13fca336e
   [node-v24.22.1-linux-x64.tar.xz]=6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6
-  [proot_5.1.107.101_aarch64.deb]=a28355e9be257e1f87f4e9294b3118470d4fd7a5442fed8b278f4443c83407d7
-  [proot_5.1.107.101_x86_64.deb]=85adb8d0d2e1edc6c56e60c17136adf05e54ce75f69407ec7116a4c5997eaed5
+  [proot_5.1.107.102_aarch64.deb]=10a394b585c2fc2b2c8502544f4e5f1be581dc8bfff79e8ba62f16207423e030
+  [proot_5.1.107.102_x86_64.deb]=2497064226c15971be8131c7facead94a06c225347796326a383c832dca57758
   [libtalloc_2.5.0_aarch64.deb]=556591f43bb773ad8777e1a29522640866a55f95dab71914418b94a8c58ad5a7
   [libtalloc_2.5.0_x86_64.deb]=b8c6d95f20075dc1f9ec6573575b2444e8d526e48e0d8d6d5cf4e071e6e06530
   [libandroid-shmem_0.7_aarch64.deb]=0da3a24d558b93c92bcf8d611e0826a99ff96e396b148e6cdf33b47c47c57ff6
@@ -82,7 +82,7 @@ declare -A PIN=(
   [cpython-3.12.15+20261021-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz]=b4567aa5a11f51b540c4dfd9e082ebf23e554f8ac17b85caa6cea23e83693394
   [cpython-3.12.15+20261021-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz]=6d7521138fd33afddc1ccd08abb007d9a2829e38117c2576f9efdc0ec73ce772
   # GPL-2.0 source of the proot binary (same archive Termux's build recipe pins); used for COPYING.
-  [proot-v5.1.107.101.zip]=a66743f50c7b0bac1913b83bf55e139d679c80a0ca2808eec76432a65640017f
+  [proot-v5.1.107.102.zip]=30d12a6e2cc4147123756ff58edea262d3083bbc238c12d0ab9b39e3d1c40852
 )
 
 log() { printf '\033[1;34m[runtime %s]\033[0m %s\n' "$(date +%H:%M:%S)" "$*" >&2; }

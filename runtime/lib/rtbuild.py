@@ -391,6 +391,15 @@ def cmd_patch_dsh(args):
             json.dump(pins, f, indent=2, sort_keys=True)
             f.write("\n")
         print("recorded pins for DSH %s in %s" % (args.dsh_version, pins_path))
+    if "zzzzzz-session-deletion.diff" in applied:
+        # Source-owned companion module, installed only alongside the vetted rc4 seam.
+        source = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "session-deletion", "core.mjs")
+        target = os.path.join(args.prefix, "node_modules", "@deepseek-ai", "dsh-session-persistence-jsonl", "lib", "dsh-go-deletion.mjs")
+        tmp = target + ".dsh-app-patch"
+        with open(source, "rb") as src, open(tmp, "wb") as dst:
+            dst.write(src.read())
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, target)
     if args.out:
         with open(args.out, "w") as f:
             json.dump(applied, f)

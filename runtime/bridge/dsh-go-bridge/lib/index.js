@@ -22,6 +22,7 @@ import { join } from "node:path";
 import { STATUS_CODES, get as httpGet } from "node:http";
 import { get as httpsGet } from "node:https";
 import { createPluginConfig, pluginConfigUnavailable } from "./plugin-config.js";
+import { createSessionDeletion, sessionDeletionUnavailable } from "./session-deletion.js";
 import { NativeCore } from "./native/core.js";
 import { effectiveLimits } from "./native/limits.js";
 import { STREAM_PATH, createNativeRoutes } from "./native/routes.js";
@@ -172,7 +173,7 @@ function installFallbackGuard(webCtx, open) {
       handler: async (req, res) => {
         const status = rejectionOf(webCtx, req);
         if (status !== undefined) {
-          const unavailable = status === 503 && pluginConfigUnavailable(req);
+          const unavailable = status === 503 && (sessionDeletionUnavailable(req) || pluginConfigUnavailable(req));
           res.writeHead(status, { "cache-control": "no-store", "content-type": unavailable ? "application/json; charset=utf-8" : "text/plain; charset=utf-8", "x-dsh-go-guard": "reject" });
           res.end(req.method === "HEAD" ? undefined : unavailable ? JSON.stringify(unavailable) : `${STATUS_CODES[status]}\n`);
           return;
@@ -339,6 +340,7 @@ export function apply(ctx, config) {
 
     const nativeRoutes = createNativeRoutes(native);
     pluginConfig = createPluginConfig(webCtx, { readBody, send });
+    const sessionDeletion = createSessionDeletion(webCtx, { readBody, send });
     webCtx.effect(() => () => nativeRoutes.dispose(), "dsh-go-bridge: native routes");
     webCtx.effect(() => webCtx.webServer.registerUpgrade({
       path: STREAM_PATH,
@@ -354,9 +356,10 @@ export function apply(ctx, config) {
 
     const handler = async (req, res) => {
       const rejection = rejectionOf(webCtx, req);
-      if (rejection !== undefined) return send(res, rejection, rejection === 503 && pluginConfigUnavailable(req) || STATUS_CODES[rejection]);
+      if (rejection !== undefined) return send(res, rejection, rejection === 503 && (sessionDeletionUnavailable(req) || pluginConfigUnavailable(req)) || STATUS_CODES[rejection]);
       const url = new URL(req.url ?? "/", "http://dsh-go.invalid");
       const path = url.pathname;
+      if (await sessionDeletion.handle(req, res, path)) return;
       if (await pluginConfig.handle(req, res, path)) return;
       if (path.startsWith(`${PREFIX}/v1/`) && await nativeRoutes.handle(req, res, path, url)) return;
       if (path === `${PREFIX}/v1/inventory`) {
