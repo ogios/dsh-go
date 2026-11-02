@@ -99,6 +99,65 @@ class _Rig {
 }
 
 void main() {
+  for (final mode in VoiceMode.values) {
+    for (final (selection, expected) in [
+      (const TextSelection.collapsed(offset: 5), 'hello new transcript old world'),
+      (const TextSelection(baseOffset: 9, extentOffset: 6), 'hello new transcript world'),
+      (const TextSelection.collapsed(offset: -1), 'hello old world new transcript'),
+      (const TextSelection.collapsed(offset: 99), 'hello old world new transcript'),
+    ]) {
+      testWidgets('${mode.name} inserts at $selection without replacing the rest of the draft', (tester) async {
+        final rig = _Rig(mode: mode);
+        rig.input.value = TextEditingValue(text: 'hello old world', selection: selection);
+        await rig.voice.start();
+        if (rig.voice.engine == VoiceEngine.system) {
+          rig.bridge.emit(const VoicePartial('new'));
+          await tester.pump();
+          rig.bridge.emit(const VoicePartial('new trans'));
+          rig.bridge.emit(const VoiceFinal('new transcript'));
+          await _flush(tester);
+        } else {
+          await rig.voice.stop();
+        }
+        expect(rig.input.text, expected);
+        expect(rig.input.selection, TextSelection.collapsed(offset: expected.indexOf('new transcript') + 14));
+        expect(rig.voice.phase, VoicePhase.idle);
+      });
+    }
+
+    testWidgets('${mode.name} cancellation restores the selected draft', (tester) async {
+      final rig = _Rig(mode: mode);
+      rig.input.value = const TextEditingValue(
+        text: 'hello old world',
+        selection: TextSelection(baseOffset: 6, extentOffset: 9),
+      );
+      final draft = rig.input.value;
+      await rig.voice.start();
+      if (rig.voice.engine == VoiceEngine.system) {
+        rig.bridge.emit(const VoicePartial('temporary'));
+        await tester.pump();
+      }
+      await rig.voice.cancel();
+      expect(rig.input.value, draft);
+    });
+  }
+
+  testWidgets('the insertion selection is captured before asynchronous startup', (tester) async {
+    final mode = Completer<VoiceMode>();
+    final rig = _Rig(choose: () => mode.future);
+    rig.input.value = const TextEditingValue(
+      text: 'hello old world',
+      selection: TextSelection(baseOffset: 6, extentOffset: 9),
+    );
+    final starting = rig.voice.start();
+    rig.input.selection = const TextSelection.collapsed(offset: 15);
+    mode.complete(VoiceMode.system);
+    await starting;
+    rig.bridge.emit(const VoiceFinal('new'));
+    await _flush(tester);
+    expect(rig.input.text, 'hello new world');
+  });
+
   test('all fifteen public speech errors have precise distinct messages; vendor code remains visible', () {
     final messages = [for (var code = 1; code <= 15; code++) voiceErrorText(code)];
     expect(messages.toSet(), hasLength(15));
