@@ -1,4 +1,4 @@
-// Voice input in the composer: the mic key on an empty draft, dictation with
+// Voice input in the composer: a dedicated mic key, dictation with
 // the system recognizer (preferred: partials stream into the draft), the
 // engine's recognizer as the fallback when the phone has none (record, then
 // transcribe), cancel, the permission flow, and goldens. Regenerate with
@@ -37,9 +37,17 @@ class _Rig {
     observeLifecycle: false,
   );
   var sent = 0;
+  var stopped = 0;
 
-  Future<void> pump(WidgetTester tester, {Brightness brightness = Brightness.light}) async {
+  Future<void> pump(
+    WidgetTester tester, {
+    Brightness brightness = Brightness.light,
+    bool running = false,
+    bool busy = false,
+    double width = 390,
+  }) async {
     usePhoneView(tester);
+    tester.view.physicalSize = Size(width * 2, 1688);
     addTearDown(voice.dispose);
     await tester.pumpWidget(
       testApp(
@@ -52,9 +60,10 @@ class _Rig {
                 child: Composer(
                   controller: input,
                   connected: true,
-                  running: false,
+                  running: running,
+                  busy: busy,
                   onSend: () => sent++,
-                  onStop: () {},
+                  onStop: () => stopped++,
                   leading: AttachButton(onPressed: () {}),
                   voice: voice,
                 ),
@@ -82,15 +91,72 @@ Future<void> _settle(WidgetTester tester) async {
 void main() {
   setUpAll(loadTestFonts);
 
-  testWidgets('the mic shows on an empty draft and gives way to send', (tester) async {
+  testWidgets('the mic stays beside send with an empty or populated draft', (tester) async {
     final rig = _Rig();
     await rig.pump(tester);
     expect(_mic, findsOneWidget);
     expect(find.bySemanticsLabel('语音输入'), findsOneWidget);
+    expect(find.byIcon(AppIcons.send), findsOneWidget);
     rig.input.text = '你好';
     await _settle(tester);
-    expect(_mic, findsNothing);
+    expect(_mic, findsOneWidget);
     expect(find.byIcon(AppIcons.send), findsOneWidget);
+    await tester.tap(find.byIcon(AppIcons.send));
+    expect(rig.sent, 1);
+  });
+
+  for (final busy in [false, true]) {
+    testWidgets('dictating beside a running reply with busy=$busy does not send or stop it', (tester) async {
+      final rig = _Rig();
+      await rig.pump(tester, running: true, busy: busy, width: 320);
+      expect(_mic, findsOneWidget);
+      if (!busy) expect(find.bySemanticsLabel('停止生成'), findsOneWidget);
+      await tester.tap(_mic);
+      await _settle(tester);
+      expect(rig.voice.phase, VoicePhase.listening);
+      expect(find.bySemanticsLabel('停止语音输入'), findsOneWidget);
+      if (!busy) expect(find.bySemanticsLabel('停止生成'), findsOneWidget);
+      await tester.tap(find.bySemanticsLabel('停止语音输入'));
+      await tester.pump();
+      expect(rig.voice.phase, VoicePhase.transcribing);
+      rig.bridge.emit(const VoiceFinal('next message'));
+      await _settle(tester);
+      expect(rig.input.text, 'next message');
+      expect(rig.sent, 0);
+      expect(rig.stopped, 0);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('mic inserts into an existing selection while busy on a narrow phone', (tester) async {
+    final rig = _Rig();
+    rig.input.value = const TextEditingValue(
+      text: 'hello old world',
+      selection: TextSelection(baseOffset: 6, extentOffset: 9),
+    );
+    await rig.pump(tester, running: true, busy: true, width: 320);
+    await tester.tap(_mic);
+    await _settle(tester);
+    rig.bridge.emit(const VoicePartial('new'));
+    await tester.pump();
+    rig.bridge.emit(const VoiceFinal('new words'));
+    await _settle(tester);
+    expect(rig.input.text, 'hello new words world');
+    expect(rig.input.selection, const TextSelection.collapsed(offset: 15));
+    expect(rig.sent, 0);
+    expect(rig.stopped, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the reply stop remains usable during dictation', (tester) async {
+    final rig = _Rig();
+    await rig.pump(tester, running: true);
+    await tester.tap(_mic);
+    await _settle(tester);
+    await tester.tap(find.bySemanticsLabel('停止生成'));
+    expect(rig.stopped, 1);
+    expect(rig.voice.phase, VoicePhase.listening);
+    expect(rig.bridge.calls, ['permission', 'recognizer']);
   });
 
   testWidgets('no recognizer and no engine: no mic', (tester) async {

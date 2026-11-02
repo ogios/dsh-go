@@ -27,12 +27,11 @@ const _lineHeight = 1.45;
 /// 输入条:chrome 玻璃 + 28 圆角,1–6 行自动增高,右下角发送 / 停止。
 ///
 /// 两颗 36 圆键是胶囊的"端盖":四周都留 [_keyGap],单行时胶囊高 48、
-/// 圆角 28 = 键半径 20 + 8,圆键与胶囊两端同心;文字在 40 高里居中。
-/// 多行时键贴底,底边和侧边仍是 8。
+/// 文字在 36 高里居中,多行时键贴底。带 [footer] 时展开为文字和按键两行。
 ///
-/// 语音([voice]):草稿为空时发送键是麦克风(和 ＋ 键同样的淡底圆);
-/// 听写时 ＋ 换成 ✕(取消)、发送键换成主色的停止键,中间文字处显示
-/// 识别结果,停止键左边是音量条。四颗键始终同一位置、同一尺寸。
+/// 语音([voice]):独立麦克风在发送键左边,和 ＋ 键同样的淡底圆。
+/// 听写时 ＋ 换成 ✕(取消)、麦克风换成主色的停止键,中间文字处显示
+/// 识别结果,麦克风左边是音量条。发送 / 停止生成键独立保留。
 class Composer extends StatefulWidget {
   const Composer({
     super.key,
@@ -338,9 +337,9 @@ class _ComposerState extends State<Composer> with SingleTickerProviderStateMixin
   void _startVoice() {
     final voice = widget.voice;
     if (voice == null) return;
+    voice.start();
     // Dictation shows the text in the field; the keyboard only covers it.
     (widget.focusNode ?? FocusManager.instance.primaryFocus)?.unfocus();
-    voice.start();
   }
 
   @override
@@ -349,7 +348,7 @@ class _ComposerState extends State<Composer> with SingleTickerProviderStateMixin
     final theme = Theme.of(context);
     final dsh = DshColors.of(context);
     final textStyle = theme.textTheme.bodyLarge?.copyWith(fontSize: _fontSize, height: _lineHeight);
-    // One line centred in the keys' 40: the padding that makes it so, at
+    // One line centred in the keys' 36: the padding that makes it so, at
     // the current text size (very large text just grows the row).
     final line = MediaQuery.textScalerOf(context).scale(_fontSize) * _lineHeight;
     final textPad = math.max(4.0, (_keySize - line) / 2);
@@ -369,9 +368,13 @@ class _ComposerState extends State<Composer> with SingleTickerProviderStateMixin
             final phase = voice?.phase ?? VoicePhase.idle;
             final dictating = phase == VoicePhase.listening || phase == VoicePhase.transcribing;
             final empty = value.text.trim().isEmpty && !widget.hasAttachments;
-            final showStop = widget.running && empty && !dictating;
-            final showMic = !dictating && !showStop && empty && !widget.busy && (voice?.available ?? false);
-            final enabled = !widget.busy && widget.connected && widget.sessionReady && (showStop || !empty);
+            final showStop = widget.running && empty;
+            final showMic = (voice?.available ?? false) || (voice?.active ?? false);
+            final enabled =
+                !widget.busy &&
+                widget.connected &&
+                widget.sessionReady &&
+                (showStop || (!empty && !(voice?.active ?? false)));
             final waiting = widget.waiting || widget.waitHint != null;
             final hint = switch (phase) {
               VoicePhase.listening => l10n.chatListeningEllipsis,
@@ -393,21 +396,8 @@ class _ComposerState extends State<Composer> with SingleTickerProviderStateMixin
                 ? VoiceWaveform(level: voice!.level, active: phase == VoicePhase.listening)
                 : widget.accessory;
 
-            final _KeyMode mode;
-            if (dictating) {
-              mode = _KeyMode.stopVoice;
-            } else if (showStop) {
-              mode = _KeyMode.stopRun;
-            } else if (showMic) {
-              mode = _KeyMode.mic;
-            } else {
-              mode = _KeyMode.send;
-            }
-            final keyBusy =
-                widget.busy ||
-                (showStop && widget.stopping) ||
-                phase == VoicePhase.transcribing ||
-                phase == VoicePhase.starting;
+            final mode = showStop ? _KeyMode.stopRun : _KeyMode.send;
+            final keyBusy = widget.busy || (showStop && widget.stopping);
 
             final leadingKey = leading == null
                 ? null
@@ -467,28 +457,21 @@ class _ComposerState extends State<Composer> with SingleTickerProviderStateMixin
                 ),
               ),
             );
+            final micKey = showMic
+                ? _SendButton(
+                    mode: dictating ? _KeyMode.stopVoice : _KeyMode.mic,
+                    busy: phase == VoicePhase.starting || phase == VoicePhase.transcribing,
+                    enabled: phase == VoicePhase.idle || phase == VoicePhase.listening,
+                    onTap: dictating ? voice!.stop : _startVoice,
+                  )
+                : null;
             final sendKey = _SendButton(
               mode: mode,
               busy: keyBusy,
               quiet: showStop && waiting && !widget.stopping,
-              enabled: switch (mode) {
-                _KeyMode.mic => true,
-                _KeyMode.stopVoice => phase == VoicePhase.listening,
-                _ => enabled,
-              },
+              enabled: enabled,
               onLongPress: mode != _KeyMode.send || !enabled ? null : widget.onSendOptions,
-              onTap: () {
-                switch (mode) {
-                  case _KeyMode.stopRun:
-                    _stop();
-                  case _KeyMode.send:
-                    _send();
-                  case _KeyMode.mic:
-                    _startVoice();
-                  case _KeyMode.stopVoice:
-                    voice?.stop();
-                }
-              },
+              onTap: showStop ? _stop : _send,
             );
             final footer = widget.footer;
             final row = footer == null
@@ -499,6 +482,7 @@ class _ComposerState extends State<Composer> with SingleTickerProviderStateMixin
                       Expanded(child: field),
                       const SizedBox(width: 8),
                       if (accessory != null) ...[accessory, const SizedBox(width: 2)],
+                      if (micKey != null) ...[micKey, const SizedBox(width: _keyGap)],
                       sendKey,
                     ],
                   )
@@ -522,6 +506,7 @@ class _ComposerState extends State<Composer> with SingleTickerProviderStateMixin
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           if (accessory != null) ...[accessory, const SizedBox(width: _keyGap)],
+                          if (micKey != null) ...[micKey, const SizedBox(width: _keyGap)],
                           sendKey,
                         ],
                       ),
@@ -742,7 +727,7 @@ class _RenderComposerRows extends RenderBox
   }
 }
 
-/// What the right-hand key does.
+/// What a composer action key does.
 enum _KeyMode {
   /// ↑ send.
   send,
@@ -750,14 +735,14 @@ enum _KeyMode {
   /// ■ stop the running turn.
   stopRun,
 
-  /// 🎙 start dictating (draft empty).
+  /// 🎙 start dictating at the current selection.
   mic,
 
   /// ■ stop dictating and keep the text.
   stopVoice,
 }
 
-/// 40 圆键:↑ 发送 / ■ 停止(实心主色);🎙 麦克风是 ＋ 键那样的淡底圆。
+/// 36 圆键:↑ 发送 / ■ 停止(实心主色);🎙 麦克风是 ＋ 键那样的淡底圆。
 /// 禁用时是 onSurface 12% 的底。
 class _SendButton extends StatefulWidget {
   const _SendButton({
