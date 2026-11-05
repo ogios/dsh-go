@@ -57,7 +57,7 @@
       }
     }
   },
-  "remoteBootstrapStarting": "正在远端启动 DSH…",
+  "remoteBootstrapStarting": "正在检查并启动远端 systemd 用户服务…",
   "remoteErrCommandNotFound": "远端找不到「{command}」",
   "@remoteErrCommandNotFound": {
     "placeholders": {
@@ -70,7 +70,7 @@
   "remoteStartCommandExample": "启动命令示例：~/.nvm/versions/node/v22.0.0/bin/dsh web",
   "remoteErrDshStartTimeout": "远端 DSH 启动超时",
   "remoteErrDshExited": "远端 DSH 启动后立即退出",
-  "remoteErrDshStart": "没能在远端启动 DSH",
+  "remoteErrDshStart": "远端 systemd 用户服务操作失败",
   "remoteExitCode": "退出码 {code}",
   "@remoteExitCode": {
     "placeholders": {
@@ -576,7 +576,7 @@
   "remoteConsole": "远程控制台",
   "remoteHostsIntro": "在手机上接着用电脑或服务器上的 DSH",
   "remoteSshHosts": "SSH 主机",
-  "remoteSshRequirements": "需要那台主机开着 SSH，并装好 DSH",
+  "remoteSshRequirements": "需要主机开启 SSH，并安装运行 DSH 的 systemd 用户服务",
   "remoteAddSshHost": "添加 SSH 主机",
   "remoteSshDirect": "不经过第三方服务器",
   "remoteOtherMethods": "其他方式",
@@ -1034,5 +1034,10 @@
     }
   },
   "remoteNetworkSnapshotHint": "显示最近一次确认的路径与延迟，刷新可重新检测。",
-  "remoteNetworkObservedAt": "最近观测"
+  "remoteNetworkObservedAt": "最近观测",
+  "remoteServiceUnit": "服务名（systemd user unit）",
+  "remoteServiceUnitHelp": "App 不再启动 dsh，只负责 start/stop/restart 并从 journal 读取启动令牌。",
+  "remoteServiceUnitInvalid": "填写服务名，只允许 A–Z、a–z、0–9、:、_、.、@、-，可带 .service 后缀",
+  "remoteErrUnitNotFound": "主机上没有这个 systemd 用户服务，请先安装对应的 .service 文件",
+  "remoteErrUserBus": "无法连接 systemd 用户总线。请在主机上执行 loginctl enable-linger <user>（替换为 SSH 用户名），然后重试"
 }

@@ -85,6 +85,13 @@ EventChannel `dsh/runtime/events`，事件 map：
 2. Dart 侧 `dsh_client` 用 token 换 cookie，之后所有 HTTP / WebSocket 带 cookie，不带 `Origin`。
 3. WebView 兜底直接打开 `http://127.0.0.1:3080/?token=…`。
 
+## SSH 远程连接
+
+1. 主机预先安装 systemd 用户服务（默认 `dsh-web.service`），服务的 `ExecStart`、环境和工作目录由主机配置；DSH 必须监听 `127.0.0.1`，并将含端口和 token 的启动 URL 写入 journal。
+2. App 用 `systemctl --user cat/show` 检查服务，复用 active 服务；未运行时 start，强制重启或 active 服务没有 token 时 restart。启动后最多轮询 60 秒，并按 systemd InvocationID 读取本次进程的 journal，避免使用旧 token。
+3. App 解析实际端口与 token，通过 SSH 转发到远端 loopback，使用 `Host: 127.0.0.1:<port>` 登录；断开 SSH 后服务继续运行。停止和重启交给 `systemctl --user stop/restart`。
+4. `workingDirectory` 仅作为新会话默认 cwd，`~` 用远端 `$HOME` 展开。用户总线不可用时，在主机上执行 `loginctl enable-linger <user>` 后重试。
+
 ## 细节
 
 - 运行时解压方式与具体 proot 参数：`runtime/` 与 `app/android/` 的运行时代码

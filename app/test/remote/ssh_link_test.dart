@@ -210,12 +210,33 @@ void main() {
     });
   });
 
-  test('missing dsh is reported at 启动 DSH, without retries', () async {
-    server.remote.dshInstalled = false;
+  test('stopping the service closes the link without restarting it', () async {
+    final l = link();
+    await l.open();
+    await l.stopService();
+    expect(server.remote.pid, isNull);
+    expect(server.remote.launches, 1);
+    expect(l.status.phase, HostLinkPhase.idle);
+    expect(server.last.scripts.last, contains('systemctl --user stop'));
+  });
+
+  test('restarting the service reconnects with a fresh token', () async {
+    final l = link();
+    final first = await l.open();
+    final token = l.endpoint!.token;
+    final second = await l.restartService();
+    expect(second, isNot(same(first)));
+    expect(l.endpoint!.token, isNot(token));
+    expect(server.remote.launches, 2);
+    expect(l.status.phase, HostLinkPhase.connected);
+  });
+
+  test('missing unit is reported at 启动 DSH, without retries', () async {
+    server.remote.unitInstalled = false;
     final l = link();
     await expectLater(
       l.open(),
-      throwsA(isA<HostLinkError>().having((e) => e.kind, 'kind', HostLinkErrorKind.dshNotFound)),
+      throwsA(isA<HostLinkError>().having((e) => e.kind, 'kind', HostLinkErrorKind.unitNotFound)),
     );
     expect(l.status.step, HostLinkStep.startDsh);
     expect(server.connects, hasLength(1));

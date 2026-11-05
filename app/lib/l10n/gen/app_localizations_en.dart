@@ -12793,7 +12793,7 @@ class L10nEn extends L10n {
   }
 
   @override
-  String get remoteBootstrapStarting => 'Starting remote DSH…';
+  String get remoteBootstrapStarting => 'Checking and starting the remote systemd user service…';
 
   @override
   String remoteErrCommandNotFound(String command) {
@@ -12814,7 +12814,7 @@ class L10nEn extends L10n {
   String get remoteErrDshExited => 'Remote DSH exited right after starting';
 
   @override
-  String get remoteErrDshStart => 'Couldn’t start remote DSH';
+  String get remoteErrDshStart => 'Remote systemd user service operation failed';
 
   @override
   String remoteExitCode(int code) {
@@ -13502,7 +13502,7 @@ class L10nEn extends L10n {
   String get remoteSshHosts => 'SSH hosts';
 
   @override
-  String get remoteSshRequirements => 'Host needs SSH enabled and DSH installed';
+  String get remoteSshRequirements => 'Host needs SSH and a systemd user service running DSH';
 
   @override
   String get remoteAddSshHost => 'Add SSH host';
@@ -19265,4 +19265,19 @@ class L10nEn extends L10n {
   String webConnectHostFirst(String name) {
     return 'Connect to “$name” to open DSH Web';
   }
+
+  @override
+  String get remoteServiceUnit => 'Service name (systemd user unit)';
+
+  @override
+  String get remoteServiceUnitHelp => 'The App no longer launches dsh itself. It only runs start/stop/restart and reads the launch token from the journal.';
+
+  @override
+  String get remoteServiceUnitInvalid => 'Enter a service name using only A–Z, a–z, 0–9, :, _, ., @ or -. The .service suffix is optional.';
+
+  @override
+  String get remoteErrUnitNotFound => 'This systemd user service is missing on the host. Install its .service file first.';
+
+  @override
+  String get remoteErrUserBus => 'Cannot connect to the systemd user bus. Run loginctl enable-linger <user> on the host (replace <user> with the SSH username), then retry.';
 }

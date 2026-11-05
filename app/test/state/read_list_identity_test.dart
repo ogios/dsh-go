@@ -113,7 +113,7 @@ void main() {
     final first = c.read(readListIdentityProvider)!;
     for (final changed in [
       ssh.copyWith(user: 'someone-else'),
-      ssh.copyWith(launchCommand: 'dsh other-profile'),
+      ssh.copyWith(unit: 'dsh-other-profile'),
       ssh.copyWith(hostKeyFingerprint: () => 'SHA256:new-key'),
       ssh.copyWith(workingDirectory: () => '/workspace/b'),
     ]) {

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/l10n.dart';
 import '../../remote/ssh/ssh_link.dart';
+import '../../remote/systemd/dsh_service.dart';
 import '../../state/attachments.dart';
 import '../../state/connection_state.dart';
 import '../../state/hosts_state.dart';
@@ -44,7 +45,7 @@ class _SshHostFormPageState extends ConsumerState<SshHostFormPage> {
   late final _host = TextEditingController(text: widget.existing?.host ?? '');
   late final _port = TextEditingController(text: '${widget.existing?.port ?? 22}');
   late final _user = TextEditingController(text: widget.existing?.user ?? '');
-  late final _command = TextEditingController(text: widget.existing?.launchCommand ?? defaultDshLaunchCommand);
+  late final _unit = TextEditingController(text: widget.existing?.unit ?? 'dsh-web');
   late final _cwd = TextEditingController(text: widget.existing?.workingDirectory ?? '');
   final _password = TextEditingController();
   final _privateKey = TextEditingController();
@@ -82,7 +83,7 @@ class _SshHostFormPageState extends ConsumerState<SshHostFormPage> {
     _host,
     _port,
     _user,
-    _command,
+    _unit,
     _cwd,
     _password,
     _privateKey,
@@ -94,7 +95,7 @@ class _SshHostFormPageState extends ConsumerState<SshHostFormPage> {
     'host': _host.text,
     'port': _port.text,
     'user': _user.text,
-    'command': _command.text,
+    'unit': _unit.text,
     'cwd': _cwd.text,
     'password': _password.text,
     'privateKey': _privateKey.text,
@@ -166,7 +167,7 @@ class _SshHostFormPageState extends ConsumerState<SshHostFormPage> {
   void dispose() {
     unawaited(_testSub?.cancel());
     unawaited(_test?.close());
-    for (final c in [_name, _host, _port, _user, _command, _cwd, _password, _privateKey, _passphrase]) {
+    for (final c in [_name, _host, _port, _user, _unit, _cwd, _password, _privateKey, _passphrase]) {
       c.dispose();
     }
     super.dispose();
@@ -178,6 +179,7 @@ class _SshHostFormPageState extends ConsumerState<SshHostFormPage> {
     final user = _user.text.trim();
     final port = int.tryParse(_port.text.trim());
     final errors = <_F, String>{
+      if (!DshService.isValidUnit(_unit.text.trim())) _F.unit: context.l10n.remoteServiceUnitInvalid,
       if (host.isEmpty) _F.host: context.l10n.remoteSshAddressRequired,
       if (user.isEmpty) _F.user: context.l10n.remoteSshUsernameRequired,
       if (port == null || port <= 0 || port > 65535) _F.port: '1–65535',
@@ -214,7 +216,7 @@ class _SshHostFormPageState extends ConsumerState<SshHostFormPage> {
       port: port!,
       user: user,
       auth: _auth,
-      launchCommand: _command.text.trim().isEmpty ? defaultDshLaunchCommand : _command.text.trim(),
+      unit: DshService.normalizeUnit(_unit.text),
       workingDirectory: _cwd.text.trim().isEmpty ? null : _cwd.text.trim(),
       hostKeyType: keyValid ? _keyType : null,
       hostKeyFingerprint: keyValid ? _keyFingerprint : null,
@@ -580,9 +582,19 @@ class _SshHostFormPageState extends ConsumerState<SshHostFormPage> {
                 FormFieldGroup(
                   children: [
                     FormFieldBlock(
-                      label: l10n.remoteStartCommand,
-                      helper: l10n.remoteStartCommandHelp,
-                      child: TextField(controller: _command, autocorrect: false, style: mono),
+                      key: _fieldKeys[_F.unit],
+                      error: _errors[_F.unit],
+                      label: l10n.remoteServiceUnit,
+                      helper: l10n.remoteServiceUnitHelp,
+                      child: TextField(
+                        controller: _unit,
+                        autocorrect: false,
+                        style: mono,
+                        onChanged: (_) => _edited(_F.unit),
+                        decoration: InputDecoration(
+                          error: _errors[_F.unit] == null ? null : const SizedBox.shrink(),
+                        ),
+                      ),
                     ),
                     FormFieldBlock(
                       label: l10n.remoteWorkingDirectory,
@@ -704,7 +716,7 @@ class _SshHostFormPageState extends ConsumerState<SshHostFormPage> {
 }
 
 /// The fields of a form page.
-enum _F { host, user, port, password, key }
+enum _F { host, user, port, password, key, unit }
 
 /// A compact text action in a field label row; its label ends flush with the
 /// field's edge.

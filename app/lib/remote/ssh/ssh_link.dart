@@ -4,8 +4,8 @@ import 'package:dsh_client/dsh_client.dart';
 
 import '../../l10n/l10n.dart';
 import '../link_status.dart';
+import '../systemd/dsh_service.dart';
 import 'local_forward.dart';
-import 'remote_bootstrap.dart';
 import 'ssh_host_config.dart';
 import 'ssh_transport.dart';
 
@@ -49,11 +49,10 @@ HostLinkError hostKeyMismatchError(SshHostConfig config, PresentedHostKey key) =
   detail: appL10n.remoteHostKeyMismatchDetail(config.hostKeyFingerprint.toString(), key.fingerprint, key.shortType),
 );
 
-/// SSH remote host: connect → verify host key → start/reuse `dsh web` →
+/// SSH remote host: connect → verify host key → start/reuse user service →
 /// local forward → DshClient login; then keepalive and reconnect.
 ///
-/// Mirrors dsh-tauri's SSH plugin flow (`bootstrap.utils.ts`, `transport.ts`):
-/// the remote server binds 127.0.0.1 only, the token comes from its log, and
+/// The service binds 127.0.0.1, the token comes from its journal, and
 /// the client presents `Host: 127.0.0.1:<remote port>` so DSH's Host fence
 /// accepts requests that arrive through the tunnel.
 class SshHostLink implements HostLink {
@@ -66,7 +65,6 @@ class SshHostLink implements HostLink {
     DshClientConnector? connectClient,
     Stream<void>? kicks,
     Backoff? backoff,
-    this.remoteEnvironment = const {},
     this.keepAliveInterval = const Duration(seconds: 15),
     this.keepAliveTimeout = const Duration(seconds: 10),
     this.tunnelProbeTimeout = const Duration(seconds: 10),
@@ -84,7 +82,6 @@ class SshHostLink implements HostLink {
   final SshTransportFactory _transportFactory;
   final DshClientConnector _connectClient;
   final Backoff _backoff;
-  final Map<String, String> remoteEnvironment;
   final Duration keepAliveInterval;
   final Duration keepAliveTimeout;
 
@@ -114,6 +111,7 @@ class SshHostLink implements HostLink {
   bool _recovering = false;
   bool _needsRelogin = false;
   bool _forceRestart = false;
+  bool _serviceAction = false;
 
   SshHostConfig get config => _config;
 
@@ -130,11 +128,48 @@ class SshHostLink implements HostLink {
 
   RemoteDshEndpoint? get endpoint => _endpoint;
 
+  /// Stops the service before closing the link so keepalive cannot restart it.
+  Future<void> stopService() async {
+    final transport = _transport;
+    if (transport == null) throw StateError('SSH is not connected');
+    _keepAlive?.cancel();
+    _serviceAction = true;
+    try {
+      await DshService(transport, unit: _config.unit).stopService();
+    } catch (_) {
+      _startKeepAlive();
+      rethrow;
+    } finally {
+      _serviceAction = false;
+    }
+    await close();
+  }
+
+  /// Restarts the service and reconnects using the new journal launch token.
+  Future<DshClient> restartService() async {
+    final transport = _transport;
+    if (transport == null) throw StateError('SSH is not connected');
+    _keepAlive?.cancel();
+    _serviceAction = true;
+    try {
+      await DshService(transport, unit: _config.unit).restartService();
+    } catch (_) {
+      _startKeepAlive();
+      rethrow;
+    } finally {
+      _serviceAction = false;
+    }
+    _forceRestart = false;
+    _teardownTransport();
+    _emit(const HostLinkStatus(HostLinkPhase.connecting, step: HostLinkStep.startDsh));
+    return open();
+  }
+
   /// The local forward port (null before the first tunnel).
   int? get localPort => _forwarder?.port;
 
   /// Configured working directory with `~` resolved on the remote.
-  String? get resolvedWorkingDirectory => RemoteDshBootstrap.absolutePath(_config.workingDirectory, _endpoint?.home);
+  String? get resolvedWorkingDirectory => DshService.absolutePath(_config.workingDirectory, _endpoint?.home);
 
   @override
   HostLinkStatus get status => _status;
@@ -241,17 +276,16 @@ class SshHostLink implements HostLink {
       transport.close();
       throw StateError('link closed');
     }
-    // Own the authenticated connection while bootstrap/probe are pending.
+    // Own the authenticated connection while service checks are pending.
     _connectingTransport = transport;
     at(HostLinkStep.startDsh, detail: appL10n.remoteCheckingDsh);
     try {
-      final bootstrap = RemoteDshBootstrap(
+      final service = DshService(
         transport,
-        launchCommand: _config.launchCommand,
+        unit: _config.unit,
         workingDirectory: _config.workingDirectory,
-        environment: remoteEnvironment,
       );
-      final endpoint = await bootstrap.ensureRunning(
+      final endpoint = await service.ensureRunning(
         forceRestart: _forceRestart,
         onDetail: (d) => at(HostLinkStep.startDsh, detail: d),
       );
@@ -373,7 +407,7 @@ class SshHostLink implements HostLink {
     } catch (_) {
       if (!identical(transport, _transport)) return;
       _backoff.reset();
-      _lost(HostLinkError(HostLinkErrorKind.dshStartFailed, appL10n.remoteErrDshStopped, retryable: true));
+      _lost(HostLinkError(HostLinkErrorKind.serviceStartFailed, appL10n.remoteErrDshStopped, retryable: true));
     }
   }
 
@@ -454,7 +488,7 @@ class SshHostLink implements HostLink {
   }
 
   void _lost(HostLinkError reason) {
-    if (_closed || _recovering || _status.phase == HostLinkPhase.failed) return;
+    if (_closed || _recovering || _serviceAction || _status.phase == HostLinkPhase.failed) return;
     if (_status.phase != HostLinkPhase.connected) return;
     _teardownTransport();
     unawaited(_recover(reason).then((_) {}, onError: (_) {}));

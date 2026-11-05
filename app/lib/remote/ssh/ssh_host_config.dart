@@ -4,9 +4,6 @@ import 'dart:math' as math;
 /// [SecretStore] under [SshSecrets] keys, never in this config.
 enum SshAuthMethod { password, privateKey }
 
-/// The remote `dsh web` launch command used when none is configured.
-const defaultDshLaunchCommand = 'dsh web';
-
 /// One saved SSH host. Persisted as JSON in SharedPreferences (no secrets).
 class SshHostConfig {
   const SshHostConfig({
@@ -16,7 +13,7 @@ class SshHostConfig {
     this.port = 22,
     required this.user,
     this.auth = SshAuthMethod.password,
-    this.launchCommand = defaultDshLaunchCommand,
+    this.unit = 'dsh-web',
     this.workingDirectory,
     this.hostKeyType,
     this.hostKeyFingerprint,
@@ -32,12 +29,11 @@ class SshHostConfig {
   final String user;
   final SshAuthMethod auth;
 
-  /// Shell command that starts DSH's web server on the remote. dsh-app appends
-  /// `--host 127.0.0.1 --port 0 --no-open`.
-  final String launchCommand;
+  /// The systemd user service that runs DSH on the remote.
+  final String unit;
 
-  /// Default cwd for new conversations on this host (and where `dsh web`
-  /// starts). `~/…` is expanded on the remote. Null: DSH's own default.
+  /// Default cwd for new conversations on this host. `~/…` is expanded
+  /// on the remote. Null: DSH's own default.
   final String? workingDirectory;
 
   /// Pinned host key (trust on first use), e.g. `ssh-ed25519` and the
@@ -47,11 +43,9 @@ class SshHostConfig {
 
   String get address => port == 22 ? '$user@$host' : '$user@$host:$port';
 
-  bool get usesDefaultCommand => launchCommand.trim() == defaultDshLaunchCommand;
-
   /// Fields that require a new SSH session when they change (name and the
   /// pinned key don't).
-  String get connectionKey => [host, port, user, auth.name, launchCommand.trim()].join('\u0000');
+  String get connectionKey => [host, port, user, auth.name, unit.trim()].join('\u0000');
 
   /// Changing where we connect forgets the pinned key: it belonged to the old
   /// machine.
@@ -61,7 +55,7 @@ class SshHostConfig {
     int? port,
     String? user,
     SshAuthMethod? auth,
-    String? launchCommand,
+    String? unit,
     String? Function()? workingDirectory,
     String? Function()? hostKeyType,
     String? Function()? hostKeyFingerprint,
@@ -74,7 +68,7 @@ class SshHostConfig {
       port: port ?? this.port,
       user: user ?? this.user,
       auth: auth ?? this.auth,
-      launchCommand: launchCommand ?? this.launchCommand,
+      unit: unit ?? this.unit,
       workingDirectory: workingDirectory != null ? workingDirectory() : this.workingDirectory,
       hostKeyType: hostKeyType != null ? hostKeyType() : (moved ? null : this.hostKeyType),
       hostKeyFingerprint: hostKeyFingerprint != null ? hostKeyFingerprint() : (moved ? null : this.hostKeyFingerprint),
@@ -88,7 +82,7 @@ class SshHostConfig {
     'port': port,
     'user': user,
     'auth': auth.name,
-    'launchCommand': launchCommand,
+    'unit': unit,
     if (workingDirectory != null) 'workingDirectory': workingDirectory,
     if (hostKeyType != null) 'hostKeyType': hostKeyType,
     if (hostKeyFingerprint != null) 'hostKeyFingerprint': hostKeyFingerprint,
@@ -102,7 +96,7 @@ class SshHostConfig {
     if (id is! String || host is! String || user is! String || id.isEmpty || host.isEmpty) return null;
     final name = raw['name'];
     final port = raw['port'];
-    final command = raw['launchCommand'];
+    final unit = raw['unit'];
     final cwd = raw['workingDirectory'];
     return SshHostConfig(
       id: id,
@@ -111,7 +105,7 @@ class SshHostConfig {
       port: port is int && port > 0 && port < 65536 ? port : 22,
       user: user,
       auth: SshAuthMethod.values.firstWhere((m) => m.name == raw['auth'], orElse: () => SshAuthMethod.password),
-      launchCommand: command is String && command.trim().isNotEmpty ? command : defaultDshLaunchCommand,
+      unit: unit is String && unit.trim().isNotEmpty ? unit : 'dsh-web',
       workingDirectory: cwd is String && cwd.trim().isNotEmpty ? cwd : null,
       hostKeyType: raw['hostKeyType'] as String?,
       hostKeyFingerprint: raw['hostKeyFingerprint'] as String?,
@@ -133,14 +127,14 @@ class SshHostConfig {
       other.port == port &&
       other.user == user &&
       other.auth == auth &&
-      other.launchCommand == launchCommand &&
+      other.unit == unit &&
       other.workingDirectory == workingDirectory &&
       other.hostKeyType == hostKeyType &&
       other.hostKeyFingerprint == hostKeyFingerprint;
 
   @override
   int get hashCode =>
-      Object.hash(id, name, host, port, user, auth, launchCommand, workingDirectory, hostKeyType, hostKeyFingerprint);
+      Object.hash(id, name, host, port, user, auth, unit, workingDirectory, hostKeyType, hostKeyFingerprint);
 }
 
 /// The secret material for one SSH host, loaded from the [SecretStore].

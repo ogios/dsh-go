@@ -90,6 +90,8 @@ enum HostLinkErrorKind {
   noShell,
   dshNotFound,
   dshStartFailed,
+  unitNotFound,
+  serviceStartFailed,
   dshTimeout,
   tunnelFailed,
   loginFailed,

@@ -5,23 +5,18 @@
 //   DSH_APP_LIVE_SSH_PORT=22422 DSH_APP_LIVE_SSH_USER=$USER \
 //   DSH_APP_LIVE_SSH_KEY=/path/to/throwaway_ed25519 \
 //   DSH_APP_LIVE_SSH_HOST_PUB=/path/to/host_ed25519.pub \
+//   DSH_APP_LIVE_SSH_UNIT=dsh-test DSH_APP_LIVE_SSH_CWD=/tmp/dsh-test-work \
 //   flutter test test/remote/live_ssh_test.dart
 //
-// Any sshd works. Without a system one, an unprivileged sshd on loopback is
-// enough: host key + authorized_keys in a temp dir, `UsePAM no`,
-// `StrictModes no`, `ListenAddress 127.0.0.1`, `Port 22422`, run with
-// `/usr/bin/sshd -D -e -f <config>` (nothing in ~/.ssh is touched).
-//
-// The remote side gets an isolated temp HOME and DSH_HOME (exported by the
-// bootstrap), so the account's real ~/.dsh and ~/.dsh-app-remote are never
-// touched. No model prompts are sent.
+// The SSH account must have a dedicated, preinstalled systemd user service.
+// Set DSH_APP_LIVE_SSH_UNIT to its name and DSH_APP_LIVE_SSH_CWD to an
+// existing absolute remote directory for test sessions. The service controls
+// its own HOME and DSH_HOME. No model prompts are sent; the service stays up.
 
 import 'dart:io';
 
 import 'package:dsh_app/remote/link_status.dart';
 import 'package:dsh_app/remote/secret_store.dart';
-import 'package:dsh_app/remote/ssh/remote_bootstrap.dart';
-import 'package:dsh_app/remote/ssh/remote_shell.dart';
 import 'package:dsh_app/remote/ssh/ssh_link.dart';
 import 'package:dsh_app/remote/ssh/ssh_transport.dart';
 import 'package:dsh_app/state/connection_state.dart';
@@ -36,16 +31,15 @@ void main() {
   final enabled = env['DSH_APP_LIVE_SSH'] == '1';
   final skip = enabled ? false : 'set DSH_APP_LIVE_SSH=1 (see file header)';
 
-  late Directory home;
   late SshHostConfig config;
   late SshSecrets secrets;
-  late Map<String, String> remoteEnv;
+  late String remoteCwd;
   final links = <SshHostLink>[];
 
   setUpAll(() {
     if (!enabled) return;
-    home = Directory.systemTemp.createTempSync('dsh-app-live-home-');
-    remoteEnv = {'HOME': home.path, 'DSH_HOME': '${home.path}/.dsh'};
+    remoteCwd = env['DSH_APP_LIVE_SSH_CWD']!;
+    if (!remoteCwd.startsWith('/')) throw ArgumentError('DSH_APP_LIVE_SSH_CWD must be absolute');
     config = SshHostConfig(
       id: 'ssh-live',
       name: '本机 SSH',
@@ -53,10 +47,10 @@ void main() {
       port: int.parse(env['DSH_APP_LIVE_SSH_PORT'] ?? '22'),
       user: env['DSH_APP_LIVE_SSH_USER'] ?? env['USER']!,
       auth: SshAuthMethod.privateKey,
-      workingDirectory: '~/work',
+      unit: env['DSH_APP_LIVE_SSH_UNIT']!,
+      workingDirectory: remoteCwd,
     );
     secrets = SshSecrets(privateKey: File(env['DSH_APP_LIVE_SSH_KEY']!).readAsStringSync());
-    Directory('${home.path}/work').createSync();
   });
 
   tearDownAll(() async {
@@ -64,9 +58,6 @@ void main() {
     for (final link in links) {
       await link.close();
     }
-    // Stop the dsh web the tests started (same machine, same isolated HOME).
-    await RemoteDshBootstrap(LocalProcessShell(), environment: remoteEnv).stop();
-    home.deleteSync(recursive: true);
   });
 
   SshHostLink link(SshHostConfig c, {HostKeyPrompter? prompt}) {
@@ -74,7 +65,6 @@ void main() {
       config: c,
       loadSecrets: () async => secrets,
       promptHostKey: prompt,
-      remoteEnvironment: remoteEnv,
       backoff: Backoff(initial: const Duration(milliseconds: 200), max: const Duration(seconds: 1), maxAttempts: 6),
     );
     links.add(l);
@@ -105,11 +95,10 @@ void main() {
       // ignore: avoid_print
       print('connected in ${sw.elapsedMilliseconds} ms; remote port ${l.endpoint!.port}, local ${l.localPort}');
       expect(steps, HostLinkStep.values.toSet());
-      expect(l.endpoint!.reused, isFalse);
 
       final before = await client.listSessions();
       final created = await client.createSession(cwd: l.resolvedWorkingDirectory);
-      expect(l.resolvedWorkingDirectory, '${home.path}/work');
+      expect(l.resolvedWorkingDirectory, remoteCwd);
       final after = await client.listSessions();
       expect(after.map((s) => s.sessionId), contains(created.sessionId));
       expect(after.length, before.length + 1);
@@ -177,7 +166,6 @@ void main() {
             (ref, cfg) => SshHostLink(
               config: cfg,
               loadSecrets: () => ref.read(hostsProvider.notifier).loadSecrets(cfg.id),
-              remoteEnvironment: remoteEnv,
             ),
           ),
         ],
@@ -199,13 +187,13 @@ void main() {
       }
       final conn = c.read(activeConnectionProvider).value!;
       expect(conn.label, '本机 SSH · SSH');
-      expect(conn.workingDirectory, '${home.path}/work');
+      expect(conn.workingDirectory, remoteCwd);
 
       final sessions = c.listen(sessionsProvider, (_, _) {});
       addTearDown(sessions.close);
       final id = await c.read(sessionsProvider.notifier).create();
       final listed = await conn.client.listSessions();
-      expect(listed.firstWhere((s) => s.sessionId == id).cwd, '${home.path}/work');
+      expect(listed.firstWhere((s) => s.sessionId == id).cwd, remoteCwd);
     },
     skip: skip,
     timeout: const Timeout(Duration(minutes: 2)),

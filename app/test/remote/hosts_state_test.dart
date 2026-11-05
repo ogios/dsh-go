@@ -90,12 +90,18 @@ void main() {
 
   group('SshHostConfig', () {
     test('json round-trip, defaults and validation', () {
-      final full = sampleSsh.copyWith(workingDirectory: () => '~/code', launchCommand: '~/.nvm/bin/dsh web');
+      final full = sampleSsh.copyWith(workingDirectory: () => '~/code', unit: 'dsh-work.service');
       expect(SshHostConfig.fromJson(jsonDecode(jsonEncode(full.toJson()))), full);
       final min = SshHostConfig.fromJson({'id': 'ssh-x', 'host': 'h', 'user': 'u', 'port': 99999})!;
       expect(min.port, 22);
       expect(min.name, 'h');
-      expect(min.launchCommand, 'dsh web');
+      expect(min.unit, 'dsh-web');
+      expect(min.toJson(), containsPair('unit', 'dsh-web'));
+      expect(min.toJson(), isNot(contains('launchCommand')));
+      expect(
+        SshHostConfig.fromJson({'id': 'ssh-old', 'host': 'h', 'user': 'u', 'launchCommand': 'custom dsh'})!.unit,
+        'dsh-web',
+      );
       expect(min.auth, SshAuthMethod.password);
       expect(SshHostConfig.fromJson({'host': 'h'}), isNull);
       expect(SshHostConfig.newId(), matches(RegExp(r'^ssh-[0-9a-f]{16}$')));
@@ -106,7 +112,7 @@ void main() {
       expect(sampleSsh.copyWith(host: '10.0.0.9').hostKeyFingerprint, isNull);
       expect(sampleSsh.copyWith(port: 2222).hostKeyFingerprint, isNull);
       expect(sampleSsh.copyWith(name: 'x').connectionKey, sampleSsh.connectionKey);
-      expect(sampleSsh.copyWith(launchCommand: 'dsh --profile w web').connectionKey, isNot(sampleSsh.connectionKey));
+      expect(sampleSsh.copyWith(unit: 'dsh-work').connectionKey, isNot(sampleSsh.connectionKey));
     });
   });
 

@@ -247,7 +247,7 @@ void main() {
     final saved = c.read(hostsProvider).ssh.firstWhere((h) => h.name == '书房电脑');
     expect(saved.host, '10.0.0.8');
     expect(saved.user, 'me');
-    expect(saved.launchCommand, 'dsh web');
+    expect(saved.unit, 'dsh-web.service');
     expect(secrets.values[SshSecrets.passwordKey(saved.id)], 's3cret');
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString(HostsController.prefsKey), isNot(contains('s3cret')));

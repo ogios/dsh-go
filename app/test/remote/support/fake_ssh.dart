@@ -7,45 +7,41 @@ import 'package:dsh_app/remote/ssh/ssh_host_config.dart';
 import 'package:dsh_app/remote/ssh/ssh_transport.dart';
 import 'package:dsh_client/dsh_client.dart';
 
-/// Imitates the remote machine: dsh-app's managed `dsh web` and its log.
+/// Imitates the remote systemd user service and its journal.
 class FakeRemote {
   int launches = 0;
   int? pid;
   int port = 40100;
   String token = 'tok-0';
 
-  /// What `dsh` does when started.
-  bool dshInstalled = true;
+  /// Whether the configured user service exists.
+  bool unitInstalled = true;
   final List<Object> tunnelErrors = [];
 
   /// Kills the managed server (reboot / crash).
   void killServer() => pid = null;
 
   RemoteExecResult run(String script) {
-    if (script.contains('DSHAPP started')) {
-      if (!dshInstalled) return const RemoteExecResult(127, 'DSHAPP home /home/me\nDSHAPP nodsh\n', '');
-      launches++;
-      pid = 1000 + launches;
-      port = 40100 + launches;
-      token = 'tok-$launches';
+    if (script.contains('DSHAPP catfailed')) {
+      if (!unitInstalled) {
+        return const RemoteExecResult(1, 'DSHAPP catfailed\n', 'Unit dsh-web.service could not be found.');
+      }
+      final reused = pid != null && !script.contains('forceRestart=1');
+      if (!reused) {
+        launches++;
+        pid = 1000 + launches;
+        port = 40100 + launches;
+        token = 'tok-$launches';
+      }
       return RemoteExecResult(
         0,
-        'DSHAPP home /home/me\nDSHAPP dsh /usr/bin/dsh\nDSHAPP started $pid\n'
+        'DSHAPP home /home/me\nDSHAPP pid $pid\n'
+            '${reused ? 'DSHAPP reused\n' : ''}'
             'DSHAPP url dsh web: http://127.0.0.1:$port/?token=$token\n',
         '',
       );
     }
-    if (script.contains('DSHAPP alive')) {
-      final alive = pid;
-      return RemoteExecResult(
-        0,
-        alive == null
-            ? 'DSHAPP home /home/me\n'
-            : 'DSHAPP home /home/me\nDSHAPP alive $alive\nDSHAPP samecmd\n'
-                  'DSHAPP url dsh web: http://127.0.0.1:$port/?token=$token\n',
-        '',
-      );
-    }
+    if (script.contains('systemctl --user stop')) pid = null;
     return const RemoteExecResult(0, '', '');
   }
 }

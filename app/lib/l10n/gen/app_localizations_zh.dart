@@ -12182,7 +12182,7 @@ class L10nZh extends L10n {
   }
 
   @override
-  String get remoteBootstrapStarting => '正在远端启动 DSH…';
+  String get remoteBootstrapStarting => '正在检查并启动远端 systemd 用户服务…';
 
   @override
   String remoteErrCommandNotFound(String command) {
@@ -12202,7 +12202,7 @@ class L10nZh extends L10n {
   String get remoteErrDshExited => '远端 DSH 启动后立即退出';
 
   @override
-  String get remoteErrDshStart => '没能在远端启动 DSH';
+  String get remoteErrDshStart => '远端 systemd 用户服务操作失败';
 
   @override
   String remoteExitCode(int code) {
@@ -12859,7 +12859,7 @@ class L10nZh extends L10n {
   String get remoteSshHosts => 'SSH 主机';
 
   @override
-  String get remoteSshRequirements => '需要那台主机开着 SSH，并装好 DSH';
+  String get remoteSshRequirements => '需要主机开启 SSH，并安装运行 DSH 的 systemd 用户服务';
 
   @override
   String get remoteAddSshHost => '添加 SSH 主机';
@@ -18248,4 +18248,19 @@ class L10nZh extends L10n {
   String webConnectHostFirst(String name) {
     return '还没连上「$name」，连上后再打开网页版';
   }
+
+  @override
+  String get remoteServiceUnit => '服务名（systemd user unit）';
+
+  @override
+  String get remoteServiceUnitHelp => 'App 不再启动 dsh，只负责 start/stop/restart 并从 journal 读取启动令牌。';
+
+  @override
+  String get remoteServiceUnitInvalid => '填写服务名，只允许 A–Z、a–z、0–9、:、_、.、@、-，可带 .service 后缀';
+
+  @override
+  String get remoteErrUnitNotFound => '主机上没有这个 systemd 用户服务，请先安装对应的 .service 文件';
+
+  @override
+  String get remoteErrUserBus => '无法连接 systemd 用户总线。请在主机上执行 loginctl enable-linger <user>（替换为 SSH 用户名），然后重试';
 }
