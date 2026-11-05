@@ -32,17 +32,21 @@ jobs:
           mkdir -p "$HOME/test-fonts"
           cd "$HOME/test-fonts"
           ( sudo apt-get update -q
-            apt-get download fonts-noto-cjk
+            # Regular/Bold ship in fonts-noto-cjk, Light in -extra.
+            apt-get download fonts-noto-cjk fonts-noto-cjk-extra
             for deb in fonts-noto-cjk*.deb; do dpkg-deb -x "$deb" unpacked; done
             find unpacked -name 'NotoSansCJK-*.ttc' -exec cp {} . \;
           ) || true
-          if [ ! -f NotoSansCJK-Regular.ttc ]; then
+          if [ ! -f NotoSansCJK-Regular.ttc ] || [ ! -f NotoSansCJK-Light.ttc ]; then
+            rm -f NotoSansCJK-*.ttc
             curl -fsSL --retry 3 -o otc.zip \
               https://github.com/notofonts/noto-cjk/releases/download/Sans2.004/03_NotoSansCJK-OTC.zip
             unzip -q -o otc.zip -d otc
             find otc -name 'NotoSansCJK-*.ttc' -exec cp {} . \;
           fi
-          for f in Regular Bold Light; do test -f "NotoSansCJK-$f.ttc"; done
+          for f in Regular Bold Light; do
+            test -f "NotoSansCJK-$f.ttc" || { echo "missing NotoSansCJK-$f.ttc"; ls -R .; exit 1; }
+          done
           echo "DSH_TEST_FONT_DIR=$HOME/test-fonts" >> "$GITHUB_ENV"
       - name: Test the systemd service layer
         run: flutter test --no-pub test/remote/dsh_service_test.dart
