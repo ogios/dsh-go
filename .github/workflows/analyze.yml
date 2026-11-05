@@ -22,5 +22,31 @@ jobs:
           flutter-version: '3.47.7'
           cache: true
       - run: flutter pub get
-      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
-      - run: flutter test test/remote/dsh_service_test.dart
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      # The widget-test harness loads Noto Sans CJK from disk and fails the
+      # whole file when it is missing; the runner image has no CJK fonts.
+      - name: Install the test fonts
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          ls -l /usr/share/fonts/opentype/noto/NotoSansCJK-Light.ttc
+      - name: Test the systemd service layer
+        env:
+          DSH_TEST_FONT_DIR: /usr/share/fonts/opentype/noto
+        run: flutter test --no-pub test/remote/dsh_service_test.dart
+      # Keeps lib/l10n/gen in step with the ARB inputs. Regenerating needs
+      # Flutter, which the author's machine does not have, so the canonical
+      # output rides along as an artifact for a manual commit.
+      - name: Regenerate the localization
+        run: python3 tool/l10n_merge.py
+      - name: Keep the regenerated localization
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: l10n-gen
+          path: app/lib/l10n/gen
+          if-no-files-found: ignore
+      - name: Generated localization matches its source
+        if: always()
+        run: git diff --exit-code -- lib/l10n
