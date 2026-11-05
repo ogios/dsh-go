@@ -26,14 +26,25 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
       # The widget-test harness loads Noto Sans CJK from disk and fails the
       # whole file when it is missing; the runner image has no CJK fonts.
-      - name: Install the test fonts
+      - name: Fetch the CJK fonts the tests load
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
-          ls -l /usr/share/fonts/opentype/noto/NotoSansCJK-Light.ttc
+          set -euo pipefail
+          mkdir -p "$HOME/test-fonts"
+          cd "$HOME/test-fonts"
+          ( sudo apt-get update -q
+            apt-get download fonts-noto-cjk
+            for deb in fonts-noto-cjk*.deb; do dpkg-deb -x "$deb" unpacked; done
+            find unpacked -name 'NotoSansCJK-*.ttc' -exec cp {} . \;
+          ) || true
+          if [ ! -f NotoSansCJK-Regular.ttc ]; then
+            curl -fsSL --retry 3 -o otc.zip \
+              https://github.com/notofonts/noto-cjk/releases/download/Sans2.004/03_NotoSansCJK-OTC.zip
+            unzip -q -o otc.zip -d otc
+            find otc -name 'NotoSansCJK-*.ttc' -exec cp {} . \;
+          fi
+          for f in Regular Bold Light; do test -f "NotoSansCJK-$f.ttc"; done
+          echo "DSH_TEST_FONT_DIR=$HOME/test-fonts" >> "$GITHUB_ENV"
       - name: Test the systemd service layer
-        env:
-          DSH_TEST_FONT_DIR: /usr/share/fonts/opentype/noto
         run: flutter test --no-pub test/remote/dsh_service_test.dart
       # Keeps lib/l10n/gen in step with the ARB inputs. Regenerating needs
       # Flutter, which the author's machine does not have, so the canonical

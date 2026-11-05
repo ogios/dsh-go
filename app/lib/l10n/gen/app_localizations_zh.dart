@@ -13500,6 +13500,21 @@ class L10nZh extends L10n {
   String get remoteNetworkObservedAt => '最近观测';
 
   @override
+  String get remoteServiceUnit => '服务名（systemd user unit）';
+
+  @override
+  String get remoteServiceUnitHelp => 'App 不再启动 dsh，只负责 start/stop/restart 并从 journal 读取启动令牌。';
+
+  @override
+  String get remoteServiceUnitInvalid => '填写服务名，只允许 A–Z、a–z、0–9、:、_、.、@、-，可带 .service 后缀';
+
+  @override
+  String get remoteErrUnitNotFound => '主机上没有这个 systemd 用户服务，请先安装对应的 .service 文件';
+
+  @override
+  String get remoteErrUserBus => '无法连接 systemd 用户总线。请在主机上执行 loginctl enable-linger <user>（替换为 SSH 用户名），然后重试';
+
+  @override
   String get stateWorkspaceFilesHint => '已上传到当前工作区的文件：';
 
   @override
@@ -18248,19 +18263,4 @@ class L10nZh extends L10n {
   String webConnectHostFirst(String name) {
     return '还没连上「$name」，连上后再打开网页版';
   }
-
-  @override
-  String get remoteServiceUnit => '服务名（systemd user unit）';
-
-  @override
-  String get remoteServiceUnitHelp => 'App 不再启动 dsh，只负责 start/stop/restart 并从 journal 读取启动令牌。';
-
-  @override
-  String get remoteServiceUnitInvalid => '填写服务名，只允许 A–Z、a–z、0–9、:、_、.、@、-，可带 .service 后缀';
-
-  @override
-  String get remoteErrUnitNotFound => '主机上没有这个 systemd 用户服务，请先安装对应的 .service 文件';
-
-  @override
-  String get remoteErrUserBus => '无法连接 systemd 用户总线。请在主机上执行 loginctl enable-linger <user>（替换为 SSH 用户名），然后重试';
 }

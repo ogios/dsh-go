@@ -24674,6 +24674,36 @@ abstract class L10n {
   /// **'最近观测'**
   String get remoteNetworkObservedAt;
 
+  /// No description provided for @remoteServiceUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务名（systemd user unit）'**
+  String get remoteServiceUnit;
+
+  /// No description provided for @remoteServiceUnitHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'App 不再启动 dsh，只负责 start/stop/restart 并从 journal 读取启动令牌。'**
+  String get remoteServiceUnitHelp;
+
+  /// No description provided for @remoteServiceUnitInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'填写服务名，只允许 A–Z、a–z、0–9、:、_、.、@、-，可带 .service 后缀'**
+  String get remoteServiceUnitInvalid;
+
+  /// No description provided for @remoteErrUnitNotFound.
+  ///
+  /// In zh, this message translates to:
+  /// **'主机上没有这个 systemd 用户服务，请先安装对应的 .service 文件'**
+  String get remoteErrUnitNotFound;
+
+  /// No description provided for @remoteErrUserBus.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法连接 systemd 用户总线。请在主机上执行 loginctl enable-linger <user>（替换为 SSH 用户名），然后重试'**
+  String get remoteErrUserBus;
+
   /// No description provided for @stateWorkspaceFilesHint.
   ///
   /// In zh, this message translates to:
@@ -33115,37 +33145,6 @@ abstract class L10n {
   /// In zh, this message translates to:
   /// **'还没连上「{name}」，连上后再打开网页版'**
   String webConnectHostFirst(String name);
-
-  /// No description provided for @remoteServiceUnit.
-  ///
-  /// In zh, this message translates to:
-  /// **'服务名（systemd user unit）'**
-  String get remoteServiceUnit;
-
-  /// No description provided for @remoteServiceUnitHelp.
-  ///
-  /// In zh, this message translates to:
-  /// **'App 不再启动 dsh，只负责 start/stop/restart 并从 journal 读取启动令牌。'**
-  String get remoteServiceUnitHelp;
-
-  /// No description provided for @remoteServiceUnitInvalid.
-  ///
-  /// In zh, this message translates to:
-  /// **'填写服务名，只允许 A–Z、a–z、0–9、:、_、.、@、-，可带 .service 后缀'**
-  String get remoteServiceUnitInvalid;
-
-  /// No description provided for @remoteErrUnitNotFound.
-  ///
-  /// In zh, this message translates to:
-  /// **'主机上没有这个 systemd 用户服务，请先安装对应的 .service 文件'**
-  String get remoteErrUnitNotFound;
-
-  /// No description provided for @remoteErrUserBus.
-  ///
-  /// In zh, this message translates to:
-  /// **'无法连接 systemd 用户总线。请在主机上执行 loginctl enable-linger <user>（替换为 SSH 用户名），然后重试'**
-  String get remoteErrUserBus;
-
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {
