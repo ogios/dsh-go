@@ -100,6 +100,20 @@ jobs:
           script.write_text(text)
           PY
 
+      - name: Download pinned PRoot from its official build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          artifact=debs-aarch64-9aedff9c28af3ca93c42eb2c3074221893232ae9
+          package=proot_5.1.107.98_aarch64.deb
+          gh run download 39199950210 -R termux/termux-packages \
+            -n "$artifact" -D "$RUNNER_TEMP/termux-proot"
+          mkdir -p runtime/.cache/termux
+          tar -xOf "$RUNNER_TEMP/termux-proot/$artifact.tar" "debs/$package" \
+            > "runtime/.cache/termux/$package"
+          echo "29de40efea4daa2a6168b617915206511c63e8d46bf5f4b07d48723441ef7f3b  runtime/.cache/termux/$package" \
+            | sha256sum --check
+
       - name: Build bundled runtime
         run: |
           sudo apt-get update
