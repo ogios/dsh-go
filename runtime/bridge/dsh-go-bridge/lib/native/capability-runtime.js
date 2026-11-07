@@ -148,7 +148,9 @@ export class CapabilityRuntime {
     });
     const transfer = async () => {
       const result = await call(reg.def, { ...e.scope }, { key, locale: e.locale, signal: controller.signal });
-      if (controller.signal.aborted || !this.alive(e) || !this.leases.has(e.lease)) fail(410, 'cancelled', 'media cancelled');
+      // Registration changes precede the deferred sweep; their old bytes must not be published.
+      if (controller.signal.aborted || !this.alive(e) || !this.leases.has(e.lease)
+        || this.core.registration(pkg, 'media', id)?.token !== reg.token) fail(410, 'cancelled', 'media cancelled');
       if (!result || !(result.body instanceof Uint8Array) || !AUDIO_TYPES.has(result.contentType)) fail(502, 'invalid-media', 'expected bounded audio bytes and supported MIME');
       if (result.body.byteLength === 0 || result.body.byteLength > L.mediaBytes) fail(413, 'too-large', 'audio must be 1..16 MiB');
       // Keep the slot and cancellation live until Node has finished the response.
@@ -199,7 +201,7 @@ export class CapabilityRuntime {
     if (!reg) { end('no-handler'); return true; }
     const key = JSON.stringify([msg.pkg, msg.id, scope.key, conn.locale]);
     let feed = this.feeds.get(key);
-    if (feed && feed.token !== reg.token) { feed.stop('not-found'); feed = undefined; }
+    if (feed && (!this.alive(feed) || feed.token !== reg.token)) { feed.stop('not-found'); feed = undefined; }
     if (!feed) {
       feed = new MicroFeed(this, key, rec, msg.id, scope.scope, conn.locale, reg);
       this.feeds.set(key, feed);
@@ -222,11 +224,19 @@ class MicroFeed {
     if (this.started) return;
     this.started = true;
     call(this.reg.def.data, { ...this.scope }, value => this.emit(value), { protocol: 1, locale: this.locale }).then(cancel => {
-      if (typeof cancel === 'function') { if (this.closed) { try { cancel(); } catch {} } else this.cancel = cancel; }
+      if (typeof cancel === 'function') { if (this.closed) { try { Promise.resolve(cancel()).catch(() => {}); } catch {} } else this.cancel = cancel; }
     }, () => this.stop('error'));
   }
+  // Registration hooks defer their sweep; a producer may settle in an earlier microtask.
+  checkCurrent() {
+    if (this.closed) return false;
+    if (this.runtime.alive(this)
+      && this.runtime.core.registration(this.pkg, 'micro', this.id)?.token === this.token) return true;
+    this.stop(this.runtime.core.health.get(this.pkg)?.degraded ? 'degraded' : 'not-found');
+    return false;
+  }
   emit(value) {
-    if (this.closed) return;
+    if (!this.checkCurrent()) return;
     const data = microModel(value);
     if (!data) { this.runtime.core.violation(this.pkg, 'invalid-micro', 'micro data exceeds the small model budget'); return; }
     this.pending = data;
@@ -237,7 +247,7 @@ class MicroFeed {
   }
   flush() {
     const data = this.pending; this.pending = undefined;
-    if (this.closed || data === undefined || deepEqual(data, this.current)) return;
+    if (!this.checkCurrent() || data === undefined || deepEqual(data, this.current)) return;
     if (this.seq >= Number.MAX_SAFE_INTEGER) { this.stop('limit'); return; }
     this.last = Date.now(); this.current = data; this.seq++;
     for (const sub of this.subs) this.send(sub);
@@ -247,7 +257,7 @@ class MicroFeed {
   stop(reason) {
     if (this.closed) return;
     this.closed = true; clearTimeout(this.timer);
-    try { this.cancel?.(); } catch {}
+    try { if (this.cancel) Promise.resolve(this.cancel()).catch(() => {}); } catch {}
     this.runtime.feeds.delete(this.key);
     for (const sub of this.subs) { sub.conn.microSubs?.delete(sub.id); if (reason) sub.conn.send({ t: 'micro.end', sub: sub.id, reason }); }
     this.subs.clear();
