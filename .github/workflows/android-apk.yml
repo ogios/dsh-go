@@ -15,8 +15,9 @@ jobs:
     env:
       DSH_BETA_TOKEN_FILE: ''
       UBUNTU_MIRROR: https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release
-      UBUNTU_ARCHIVE_AMD64: http://archive.ubuntu.com/ubuntu
-      UBUNTU_ARCHIVE_ARM64: http://ports.ubuntu.com/ubuntu-ports
+      UBUNTU_ARCHIVE_AMD64: https://archive.ubuntu.com/ubuntu
+      UBUNTU_ARCHIVE_ARM64: https://ports.ubuntu.com/ubuntu-ports
+      UPDATE_DEB_LOCK: '1'
       NODE_MIRROR: https://nodejs.org/dist
       NPM_REGISTRY: https://registry.npmjs.org
       PBS_MIRROR: https://github.com/astral-sh/python-build-standalone/releases/download
@@ -69,6 +70,35 @@ jobs:
           cd app
           flutter pub get
           flutter gen-l10n
+
+      - name: Use upstream runtime mirrors
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          import shlex
+
+          script = Path('runtime/build-runtime.sh')
+          text = script.read_text()
+          for name in (
+              'UBUNTU_MIRROR',
+              'UBUNTU_ARCHIVE_AMD64',
+              'UBUNTU_ARCHIVE_ARM64',
+              'NODE_MIRROR',
+              'NPM_REGISTRY',
+              'PBS_MIRROR',
+          ):
+              text, count = re.subn(
+                  rf'^{name}=.*$',
+                  lambda _: f'{name}={shlex.quote(os.environ[name])}',
+                  text,
+                  flags=re.MULTILINE,
+              )
+              if count != 1:
+                  raise SystemExit(f'Expected one assignment for {name}, found {count}')
+          script.write_text(text)
+          PY
 
       - name: Build bundled runtime
         run: |
